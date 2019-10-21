@@ -1,11 +1,12 @@
 ---
-title: "Introduction to Google Charts and googleVis"
+title: "Using Google Charts with googleVis"
 author: "Craig 'Doc' Savage"
-date: "8 September 2019"
+date: "21 October 2019"
 output: 
   ioslides_presentation: 
     highlight: pygments
     incremental: yes
+    logo: melbsDataVis.png
     transition: faster
     widescreen: yes
 runtime: shiny
@@ -21,7 +22,6 @@ library( shiny )
 library( magrittr )
 library( DT )
 suppressPackageStartupMessages( library( googleVis ) )
-library( rhandsontable )
 
 # Check auxillary libraries
 require( gapminder ) # Data for motion chart demo
@@ -33,8 +33,8 @@ data( "gapminder_unfiltered", package='gapminder' )
 mcData <- gapminder_unfiltered %>% mutate( GDP=gdpPercap*pop )
 breaksAndLabels <- data.frame( breaks=c(0,1,2,5,10,Inf)
                                , labels=c('Very Short', 'Short', 'Medium', 'Long', 'Very Long', NA ) )
-## Load data ----
 
+## Load data ----
 rawImpressionData <- readr::read_csv( './myChannelData.csv' )
 
 # Quick addition of some columns
@@ -78,8 +78,16 @@ sankeyGraph <- gvisSankey( sankeyData
                            , weight="N"
                            , options=list( sankey.node.nodepadding=30
                                            , height=500
-                                           , width=700 )
+                                           , width=850 )
  )
+
+## Source file for motion charts ----
+# Data sourcing and wrangling can be found in 
+# makeMotionChart.R
+# ...but it has lots of extraneous stuff. 
+# Load the '.RData' file saved at the end of the script.
+ source( 'makeMotionChart.R' )
+#load( 'motionChartData.RData' )
 ```
 
 ## Introduction
@@ -128,11 +136,10 @@ DT::datatable( pcTable
 - Sankey Diagrams: Data from my YouTube channel
     + Basic
     + Customised tooltips
-    + `shiny` integration
 - Motion Charts: `gapminder` data
-    + As popularised by Prof Hans Rosling 
     + Explore intrinsic features
     + Requires Flash
+    + `shiny` integration
     
 ## Sankey | Basic
 
@@ -150,14 +157,25 @@ pokeFiles <- paste0( pokeURL, pokemon$url_image )
 d1 <- impressionData %>%
   group_by( From=Total, To=videoType ) %>%
   summarise( N=sum( videoNumClicks )
-             , info.tooltip=sum( videoNumClicks )/sum( videoImpressions ) ) %>%
-  mutate( textColour=case_when( info.tooltip < 0.01 ~ 'red'
-                              , info.tooltip < 0.025 ~ 'black'
-                              , info.tooltip < 0.05 ~ 'green'
+             , totalImpressions=sum( videoImpressions )
+             , totalClicks=sum( videoNumClicks )
+             , CTR=sum( videoNumClicks )/sum( videoImpressions ) ) %>%
+  mutate( textColour=case_when( CTR < 0.01 ~ 'red'
+                              , CTR < 0.025 ~ 'black'
+                              , CTR < 0.05 ~ 'green'
                               , TRUE ~ 'blue' ) 
-          , info.tooltip=paste0( '<div style="color:', textColour, '"> CTR:'
-                                ,scales::percent( info.tooltip )
-                                , '</div>')
+                            , info.tooltip=paste0( '<div style="color:'
+                                                   , textColour
+                                                   , '">'
+                                                   , 'Total Impressions:'
+                                                   , totalImpressions
+                                                   , '<br/>'
+                                                   , 'Total Clicks:'
+                                                   , totalClicks
+                                                   , '<br/>'
+                                                   , 'CTR:'
+                                                   ,scales::percent( CTR )
+                                                   , '</div>')
   ) %>%
   arrange( desc( N ) ) %>%
   filter( N > 0 )
@@ -175,13 +193,17 @@ d2 %<>% mutate( textColour='white' )
 d3 <- impressionData %>%
   group_by( From=videoTitle, To=aveViewBin ) %>%
   summarise( N=sum( videoNumClicks )
-             , info.tooltip=sum( videoNumClicks )/sum( videoImpressions ) ) %>%
-  mutate( textColour=case_when( info.tooltip < 0.01 ~ 'red'
-                              , info.tooltip < 0.025 ~ 'black'
-                              , info.tooltip < 0.05 ~ 'green'
+             , CTR=sum( videoNumClicks )/sum( videoImpressions )
+             , meanViewDur=mean( aveViewDur ) ) %>%
+  mutate( textColour=case_when( CTR < 0.01 ~ 'red'
+                              , CTR < 0.025 ~ 'black'
+                              , CTR < 0.05 ~ 'green'
                               , TRUE ~ 'blue' ) 
-          , info.tooltip=paste0( '<div style="color:', textColour, '"> CTR:'
-                                ,scales::percent( info.tooltip )
+          , info.tooltip=paste0( '<div style="color:', textColour, '"> Ave View Duration:'
+                                , round( meanViewDur, 1 )
+                                , "<br/>"
+                                , "CTR:"
+                                , scales::percent( CTR )
                                 , '</div>')
           ) %>%
   arrange( desc( N ) ) %>%
@@ -196,100 +218,17 @@ sankeyGraph <- gvisSankey( sankeyData
                            , weight="N"
                            , options=list( sankey.node.nodepadding=30
                                            , height=500
-                                           , width=700
+                                           , width=850
                                            , tooltip="{isHtml : 'TRUE'}" )
  )
 
 plot( sankeyGraph, tag='chart' )
 ```
 
-## Sankey | `shiny` integration
 
-```{r shinyDemo}
-shinyRV <- reactiveValues( baseData=impressionData
-                           , bnl=breaksAndLabels %>% filter( is.finite( breaks ), !is.na( labels ) )
-                           , mySankey=sankeyGraph
-                           , myData=sankeyData )
-sankeyUI <- fluidPage(
-  sidebarLayout(
-    sidebarPanel( rHandsontableOutput( 'binRHoT' ) 
-    , actionButton( 'goSankey', 'Re-bin!' ), width=4 )
-  , mainPanel( htmlOutput( 'shinySankey' ) )
-  )
-)
-sankeyServer <- function( input, output ){
+## Motion Chart | But nothing happens
 
-  observeEvent( input$binRHoT
-                , shinyRV$bnl <- hot_to_r( input$binRHoT ) %>%
-                  arrange( breaks ) 
-                )
-
-  output$binRHoT <- renderRHandsontable({
-    rhandsontable( shinyRV$bnl %>% mutate_if( is.factor, as.character )
-                   , rowHeaders=FALSE
-                   , readOnly=FALSE ) %>%
-      hot_table( overflow='hidden' ) %>%
-      hot_col( 'breaks', type='numeric' ) %>%
-      hot_col( 'labels', strict=FALSE )
-  })
-  
-  output$shinySankey <- renderGvis( shinyRV$mySankey )
-  observeEvent( input$goSankey
-                , {
-                  shinyData <- impressionData %>%
-                    mutate( aveViewBin=cut( aveViewDur
-                                            , breaks = c( shinyRV$bnl$breaks, Inf )
-                                            , labels = shinyRV$bnl$labels
-                                            , include.lowest = TRUE
-                                            , ordered_result = TRUE)
-                    )
-                  
-                  ## Only the third Sankey level is impacted
-                  shinyD3 <- shinyData %>%
-                    group_by( From=videoTitle, To=aveViewBin ) %>%
-                    summarise( N=sum( videoNumClicks )
-                               , info.tooltip=sum( videoNumClicks )/sum( videoImpressions ) ) %>%
-                    mutate( textColour=case_when( info.tooltip < 0.01 ~ 'red'
-                                                  , info.tooltip < 0.025 ~ 'black'
-                                                  , info.tooltip < 0.05 ~ 'green'
-                                                  , TRUE ~ 'blue' ) 
-                            , info.tooltip=paste0( '<div style="color:', textColour, '"> CTR:'
-                                                   ,scales::percent( info.tooltip )
-                                                   , '</div>')
-                    ) %>%
-                    arrange( desc( N ) ) %>%
-                    filter( N > 0 )
-                  
-                  # ... but update the pokefiles, anyway
-                  shinyD2 <- d2 
-                  shinyD2[,'info.tooltip'] <- paste0( '<img src="'
-                                                      , sample( pokeFiles, size=nrow( d2 ), replace=FALSE )
-                                                      , '", width="150px", height="125px">')
-                  #d2[,'info.tooltip'] <- 'Hi Mom!'
-                  shinyD2 %<>% mutate( textColour='white' )
-                  
-                  
-                  shinySankeyData <- bind_rows( d1, shinyD2, shinyD3 ) %>%
-                    arrange( desc(N) )
-                  
-                  shinyRV$mySankey <- gvisSankey( shinySankeyData
-                                                  , from="From"
-                                                  , to="To"
-                                                  , weight="N"
-                                                  , options=list( sankey.node.nodepadding=10
-                                                                  , height=500
-                                                                  , width=700
-                                                                  , tooltip="{isHtml : 'TRUE'}" )
-                  )
-                  
-  })
-}
-shinyApp( ui=sankeyUI, server=sankeyServer )
-```
-
-## Motion Chart
-
-```{r motionChart, results='asis' }
+```{r motionChartFail, results='asis' }
 data( gapminder_unfiltered, package='gapminder' )
 motionData <- gapminder_unfiltered %>% mutate( GDP=gdpPercap*pop )
 motionChart <- gvisMotionChart( motionData
@@ -303,6 +242,90 @@ motionChart <- gvisMotionChart( motionData
 plot( motionChart, tag='chart' )
 ```
 
+## Motion Chart | BUT NOTHING HAPPENS!!!!
+
+<div class="centered">
+![You've got a friend in PANIC!](https://media.giphy.com/media/5qoRdabXeT4GY/giphy.gif)
+</div>
+
+## Motion Chart | Flash Enabled
+
+```{r motionChartWin, results='asis' }
+motionChart <- gvisMotionChart( motionData
+                                , idvar='country'
+                                , timevar = 'year'
+                                , xvar = 'lifeExp'
+                                , yvar='gdpPercap'
+                                , colorvar = 'continent'
+                                , sizevar = 'pop' )
+plot( motionChart, tag='chart' )
+```
+
+## Motion Charts | `shiny` integration
+
+```{r shinyMotion, results='asis'}
+library( shiny )
+library( shinyBS )
+motionRV <- reactiveValues( motionChart=NULL )
+
+indicatorData1975 <- indicatorData1 %>%
+  filter( Year == 1975 )
+
+shinyUI <- fluidPage(
+  fluidRow( column( width = 4
+                    , sliderInput('filterPop'
+                                  , label='Population limits:'
+                                  , value=c(100, 400)
+                                  , min=0.5
+                                  , max=700
+                                  , step=10 )
+  )
+  , column( width=4
+            , sliderInput( 'filterLife'
+                           , label='Life Expectancy filter:'
+                           , value=c(40,65)
+                           , min=25
+                           , max=85 
+                           , step=1) 
+  )
+  , column( width=4, actionButton( 'goFilter'
+                                   , 'Filter!' ) )
+  )
+  , bsTooltip( 'filterPop', title='In millions, based on 1975 data' )
+  , bsTooltip( 'filterLife', title='Based on 1975 data' )
+  , fluidRow( htmlOutput( 'shinyMotion' ) )
+)
+shinyServer <- function( input, output ){
+  observeEvent( input$goFilter, {
+    countryFilter <- indicatorData1975 %>%
+      filter( `Population, total` >= 1e6*input$filterPop[1]
+              ,`Population, total` <= 1e6*input$filterPop[2]
+              , `Life expectancy at birth, total (years)` >= input$filterLife[1]
+              , `Life expectancy at birth, total (years)` <= input$filterLife[2]
+      ) %>%
+      select( CountryCode )
+    
+    newIndicatorData <- indicatorData1 %>%
+      inner_join( countryFilter, by='CountryCode' )
+
+    print( nrow( newIndicatorData ) )
+    motionRV$motionChart <- gvisMotionChart( data=newIndicatorData
+                                , idvar='CountryName'
+                                , timevar = 'Year'
+                                , xvar='Fertility rate, total (births per woman)'
+                                , yvar='Life expectancy at birth, total (years)'
+                                , colorvar='Region'
+                                , sizevar='Population, total' 
+                                , options=list( width=700
+                                                , height=500) )
+    motionRV$motionChart
+  })
+  
+  output$shinyMotion <- renderGvis( motionRV$motionChart )
+}
+shinyApp( ui=shinyUI, server=shinyServer )  
+```
+
 ## Summary {.smaller}
 
 - Explored a few Google Charts through the `googleVis` package
@@ -310,24 +333,30 @@ plot( motionChart, tag='chart' )
     + Motion Charts
 - Other JS libraries (and R packages) in this presentation:
     + datatables (`DT`): List of Pros and Cons for Google Charts
-    + Handsontable (`rhandsontable`): `shiny` interface for Sankey
+    + Highcharts (`highcharter`): Pokemon data. Requires license for commercial/government usage
 - Other JS libraries available from R (not in this presentation)
     + Leaflet (`leaflet`): Maps, from country to street level
-    + Highcharts (`highcharter`): Requires license for commercial/government usage
     + D3 (`plotly`, `r2d3`, `networkD3`): Various ways to connect with D3!
     
 ## Conclusions
 
 - Slides (`rmarkdown`) will be on GitHub (https://github.com/SavageDoc/googleCharts)
 - Video (YouTube) TBD....
-    + `googleVis` series already up ("Visualisation" series on my channel - search for Real World Analytics)
+    + `googleVis` series already up 
 
 - Thanks to:
     + Ned Lechter & the Data Viz Meetup Group for hosting
     + Zendesk for the space
+- Markus Gesmann and Diego de Castillo for the `googleVis` package
+
+- Markus Gesmann and Diego de Castillo. Using the Google
+  Visualisation API with R. The R Journal, 3(2):40-44, December
+  2011.
     
 ## Thank you
 
 ```{r thankYou, out.width="75%", fig.align="center"}
 knitr::include_graphics("https://media.giphy.com/media/28XVGIraFzKKI/giphy.gif")
 ```
+
+# Thank you

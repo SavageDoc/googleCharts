@@ -25,22 +25,20 @@ indicatorData <- rawIndicatorData%>%
                                , 'Life expectancy at birth, total (years)'
                                , 'Mortality rate, infant (per 1,000 live births)'
                                , 'Population, total'
-                               , 'Population density (people per sq. km of land area)'
-                               , 'GDP (current LCU)'
                                , 'GDP, PPP (current international $)'
-                               , 'GDP per capita, PPP (current international $)'
-                               , 'GDP per capita (constant LCU)'
-                               , 'GDP growth (annual %)' )
+                               , 'GDP per capita, PPP (current international $)' 
+                               )
   ) %>%
   # Limit the years, too
-  filter( Year >= 1965 )
+  filter( Year >= 1975 )
 
-indicatorData1 <- indicatorData %>% inner_join( countryData, by='CountryCode' ) %>%
+indicatorData1 <- indicatorData %>% 
+  inner_join( countryData, by='CountryCode' ) %>%
   spread( IndicatorName, Value, drop = TRUE ) %>%
   as.data.frame()
 
 
-
+# Here's the command to make the motion chart
 motionChart <- gvisMotionChart( data=indicatorData1
                                 , idvar='CountryName'
                                 , timevar = 'Year'
@@ -48,6 +46,9 @@ motionChart <- gvisMotionChart( data=indicatorData1
                                 , yvar='Mortality rate, infant (per 1,000 live births)'
                                 , colorvar='Region'
                                 , sizevar='Population, total' 
-                                , options=list( width=1000 ) )
+                                , options=list( width=700 ) )
 
-plot( motionChart )
+save( indicatorData1, file='motionChartData.RData' )
+
+# Save some memory
+rm( rawIndicatorData, indicatorData, rawCountryData, countryData, motionChart )
